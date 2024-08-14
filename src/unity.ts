@@ -1,8 +1,8 @@
-const exec = require('@actions/exec');
-const core = require('@actions/core');
-const io = require('@actions/io');
-const fs = require('fs').promises;
-const path = require('path');
+import exec = require('@actions/exec');
+import core = require('@actions/core');
+import io = require('@actions/io');
+import path = require('path');
+import fs = require('fs');
 
 const pidFile = path.join(process.env.RUNNER_TEMP, 'unity-process-id.txt');
 let isCancelled = false;
@@ -19,7 +19,7 @@ async function ExecUnityPwsh(editorPath, args) {
         await TryKillPid(pidFile);
         isCancelled = true;
     });
-    const exitCode = await exec.exec(`"${pwsh}" -Command`, `${unity} -EditorPath '${editorPath}' -Arguments '${args.join(` `)}' -LogPath '${logPath}'`, {
+    const exitCode = await exec.exec(`"${pwsh}" -Command`, [`${unity} -EditorPath '${editorPath}' -Arguments '${args.join(` `)}' -LogPath '${logPath}'`], {
         listeners: {
             stdline: (data) => {
                 const line = data.toString().trim();
@@ -49,21 +49,21 @@ function getLogFilePath(args) {
 
 async function TryKillPid(pidFile) {
     try {
-        await fs.access(pidFile, fs.constants.R_OK);
+        await fs.promises.access(pidFile, fs.constants.R_OK);
         try {
-            const pid = await fs.readFile(pidFile, 'utf8');
+            const pid = await fs.promises.readFile(pidFile, 'utf8');
             core.debug(`Attempting to kill Unity process with pid: ${pid}`);
-            process.kill(pid);
+            process.kill(parseInt(pid));
         } catch (error) {
             if (error.code !== 'ENOENT' && error.code !== 'ESRCH') {
                 core.error(`Failed to kill Unity process:\n${JSON.stringify(error)}`);
             }
         } finally {
-            await fs.unlink(pidFile);
+            await fs.promises.unlink(pidFile);
         }
     } catch (error) {
         // nothing
     }
 }
 
-module.exports = { ExecUnityPwsh };
+export { ExecUnityPwsh }

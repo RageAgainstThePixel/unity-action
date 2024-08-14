@@ -1,6 +1,6 @@
-const { ValidateInputs } = require('./inputs');
-const { ExecUnityPwsh } = require('./unity');
-const core = require('@actions/core');
+import { ValidateInputs } from './inputs';
+import { ExecUnityPwsh } from './unity';
+import core = require('@actions/core');
 
 const main = async () => {
     try {

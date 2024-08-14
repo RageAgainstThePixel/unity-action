@@ -26253,8 +26253,6 @@ const pidFile = path.join(process.env.RUNNER_TEMP, 'unity-process-id.txt');
 let isCancelled = false;
 async function ExecUnityPwsh(editorPath, args) {
     const logPath = getLogFilePath(args);
-    const pwsh = await io.which('pwsh', true);
-    const unity = __nccwpck_require__.ab + "unity.ps1";
     process.on('SIGINT', async () => {
         await TryKillPid(pidFile);
         isCancelled = true;
@@ -26263,18 +26261,39 @@ async function ExecUnityPwsh(editorPath, args) {
         await TryKillPid(pidFile);
         isCancelled = true;
     });
-    const exitCode = await exec.exec(`"${pwsh}" -Command`, [`${unity} -EditorPath '${editorPath}' -Arguments '${args.join(` `)}' -LogPath '${logPath}'`], {
-        listeners: {
-            stdline: (data) => {
-                const line = data.toString().trim();
-                if (line && line.length > 0) {
-                    core.info(line);
-                }
-            }
-        },
-        silent: true,
-        ignoreReturnCode: true
-    });
+    let exitCode = 0;
+    switch (process.platform) {
+        case 'linux':
+            exitCode = await exec.exec(`xvfb-run`, [`--auto-servernum`, `"${editorPath}"`, ...args, `-logFile`, `"${logPath}"`], {
+                listeners: {
+                    stdline: (data) => {
+                        const line = data.toString().trim();
+                        if (line && line.length > 0) {
+                            core.info(line);
+                        }
+                    }
+                },
+                silent: true,
+                ignoreReturnCode: true
+            });
+            break;
+        default:
+            const unity = __nccwpck_require__.ab + "unity.ps1";
+            const pwsh = await io.which('pwsh', true);
+            exitCode = await exec.exec(`"${pwsh}" -Command`, [`${unity} -EditorPath '${editorPath}' -Arguments '${args.join(` `)}' -LogPath '${logPath}'`], {
+                listeners: {
+                    stdline: (data) => {
+                        const line = data.toString().trim();
+                        if (line && line.length > 0) {
+                            core.info(line);
+                        }
+                    }
+                },
+                silent: true,
+                ignoreReturnCode: true
+            });
+            break;
+    }
     if (!isCancelled) {
         await TryKillPid(pidFile);
         if (exitCode !== 0) {
@@ -26294,10 +26313,14 @@ async function TryKillPid(pidFile) {
         await fs.promises.access(pidFile, fs.constants.R_OK);
         try {
             const fd = await fs.promises.open(pidFile, 'r');
-            const pid = await fd.readFile('utf8');
-            core.debug(`Attempting to kill Unity process with pid: ${pid}`);
-            process.kill(parseInt(pid));
-            await fd.close();
+            try {
+                const pid = await fd.readFile('utf8');
+                core.debug(`Attempting to kill Unity process with pid: ${pid}`);
+                process.kill(parseInt(pid));
+            }
+            finally {
+                await fd.close();
+            }
         }
         catch (error) {
             if (error.code !== 'ENOENT' && error.code !== 'ESRCH') {

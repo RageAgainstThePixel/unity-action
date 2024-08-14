@@ -19,21 +19,21 @@ async function ExecUnity(editorPath: string, args: string[]): Promise<void> {
     });
     let exitCode = 0;
     switch (process.platform) {
-        case 'linux':
-            core.info(`[command]xvfb-run -ae /dev/stdout ${editorPath} ${args.join(' ')} -logFile ${logPath}`);
-            exitCode = await exec.exec(`xvfb-run`, [`-ae`, `/dev/stdout`, editorPath, ...args, `-logFile`, logPath], {
-                listeners: {
-                    stdline: (data) => {
-                        const line = data.toString().trim();
-                        if (line && line.length > 0) {
-                            core.info(line);
-                        }
-                    }
-                },
-                silent: true,
-                ignoreReturnCode: true
-            });
-            break;
+        // case 'linux':
+        //     core.info(`[command]xvfb-run -ae /dev/stdout ${editorPath} ${args.join(' ')} -logFile ${logPath}`);
+        //     exitCode = await exec.exec(`xvfb-run`, [`-ae`, `/dev/stdout`, editorPath, ...args, `-logFile`, logPath], {
+        //         listeners: {
+        //             stdline: (data) => {
+        //                 const line = data.toString().trim();
+        //                 if (line && line.length > 0) {
+        //                     core.info(line);
+        //                 }
+        //             }
+        //         },
+        //         silent: true,
+        //         ignoreReturnCode: true
+        //     });
+        //     break;
         default:
             const unity = path.resolve(__dirname, `unity.ps1`);
             const pwsh = await io.which('pwsh', true);

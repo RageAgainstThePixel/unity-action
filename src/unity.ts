@@ -7,7 +7,7 @@ import fs = require('fs');
 const pidFile = path.join(process.env.RUNNER_TEMP, 'unity-process-id.txt');
 let isCancelled = false;
 
-async function ExecUnityPwsh(editorPath: string, args: string[]): Promise<void> {
+async function ExecUnity(editorPath: string, args: string[]): Promise<void> {
     const logPath = getLogFilePath(args);
     process.on('SIGINT', async () => {
         await TryKillPid(pidFile);
@@ -87,4 +87,4 @@ async function TryKillPid(pidFile: string): Promise<void> {
     }
 }
 
-export { ExecUnityPwsh }
+export { ExecUnity }

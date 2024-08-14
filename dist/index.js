@@ -26243,7 +26243,7 @@ async function ValidateInputs() {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.ExecUnityPwsh = ExecUnityPwsh;
+exports.ExecUnity = ExecUnity;
 const exec = __nccwpck_require__(1514);
 const core = __nccwpck_require__(2186);
 const io = __nccwpck_require__(7436);
@@ -26251,7 +26251,7 @@ const path = __nccwpck_require__(1017);
 const fs = __nccwpck_require__(7147);
 const pidFile = path.join(process.env.RUNNER_TEMP, 'unity-process-id.txt');
 let isCancelled = false;
-async function ExecUnityPwsh(editorPath, args) {
+async function ExecUnity(editorPath, args) {
     const logPath = getLogFilePath(args);
     process.on('SIGINT', async () => {
         await TryKillPid(pidFile);
@@ -28249,7 +28249,7 @@ const core = __nccwpck_require__(2186);
 const main = async () => {
     try {
         const [editor, args] = await (0, inputs_1.ValidateInputs)();
-        await (0, unity_1.ExecUnityPwsh)(editor, args);
+        await (0, unity_1.ExecUnity)(editor, args);
     }
     catch (error) {
         core.setFailed(error.message);

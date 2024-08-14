@@ -68,25 +68,22 @@ function getLogFilePath(args: string[]): string {
 
 async function TryKillPid(pidFile: string): Promise<void> {
     try {
-        await fs.promises.access(pidFile, fs.constants.R_OK);
+        const fileHandle = await fs.promises.open(pidFile, 'r');
         try {
-            const fd = await fs.promises.open(pidFile, 'r');
-            try {
-                const pid = await fd.readFile('utf8');
-                core.debug(`Attempting to kill Unity process with pid: ${pid}`);
-                process.kill(parseInt(pid));
-            } finally {
-                await fd.close();
-            }
+            const pid = await fileHandle.readFile('utf8');
+            core.debug(`Attempting to kill Unity process with pid: ${pid}`);
+            process.kill(parseInt(pid));
         } catch (error) {
             if (error.code !== 'ENOENT' && error.code !== 'ESRCH') {
                 core.error(`Failed to kill Unity process:\n${JSON.stringify(error)}`);
             }
         } finally {
+            await fileHandle.close();
             await fs.promises.unlink(pidFile);
         }
+
     } catch (error) {
-        // nothing
+        // ignored
     }
 }
 

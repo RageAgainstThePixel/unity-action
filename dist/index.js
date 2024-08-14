@@ -26293,9 +26293,11 @@ async function TryKillPid(pidFile) {
     try {
         await fs.promises.access(pidFile, fs.constants.R_OK);
         try {
-            const pid = await fs.promises.readFile(pidFile, 'utf8');
+            const fd = await fs.promises.open(pidFile, 'r');
+            const pid = await fd.readFile('utf8');
             core.debug(`Attempting to kill Unity process with pid: ${pid}`);
             process.kill(parseInt(pid));
+            await fd.close();
         }
         catch (error) {
             if (error.code !== 'ENOENT' && error.code !== 'ESRCH') {

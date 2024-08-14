@@ -7,7 +7,7 @@ import fs = require('fs');
 const pidFile = path.join(process.env.RUNNER_TEMP, 'unity-process-id.txt');
 let isCancelled = false;
 
-async function ExecUnityPwsh(editorPath, args) {
+async function ExecUnityPwsh(editorPath: string, args: string[]): Promise<void> {
     const logPath = getLogFilePath(args);
     const pwsh = await io.which('pwsh', true);
     const unity = path.resolve(__dirname, `unity.ps1`);
@@ -39,7 +39,7 @@ async function ExecUnityPwsh(editorPath, args) {
     }
 }
 
-function getLogFilePath(args) {
+function getLogFilePath(args: string[]): string {
     const logFileIndex = args.indexOf('-logFile');
     if (logFileIndex === -1) {
         throw Error('Missing -logFile argument');
@@ -47,13 +47,15 @@ function getLogFilePath(args) {
     return args[logFileIndex + 1];
 }
 
-async function TryKillPid(pidFile) {
+async function TryKillPid(pidFile: string): Promise<void> {
     try {
         await fs.promises.access(pidFile, fs.constants.R_OK);
         try {
-            const pid = await fs.promises.readFile(pidFile, 'utf8');
+            const fd = await fs.promises.open(pidFile, 'r');
+            const pid = await fd.readFile('utf8');
             core.debug(`Attempting to kill Unity process with pid: ${pid}`);
             process.kill(parseInt(pid));
+            await fd.close();
         } catch (error) {
             if (error.code !== 'ENOENT' && error.code !== 'ESRCH') {
                 core.error(`Failed to kill Unity process:\n${JSON.stringify(error)}`);

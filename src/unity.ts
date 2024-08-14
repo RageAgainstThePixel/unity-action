@@ -20,7 +20,7 @@ async function ExecUnityPwsh(editorPath: string, args: string[]): Promise<void> 
     let exitCode = 0;
     switch (process.platform) {
         case 'linux':
-            exitCode = await exec.exec(`xvfb-run`, [`--auto-servernum`, `"${editorPath}"`, ...args, `-logFile`, `"${logPath}"`], {
+            exitCode = await exec.exec(`xvfb-run`, [`--auto-servernum`, `--server-args='-screen 0 640x480x24:32'`, `"${editorPath}"`, ...args, `-logFile`, `"${logPath}"`], {
                 listeners: {
                     stdline: (data) => {
                         const line = data.toString().trim();

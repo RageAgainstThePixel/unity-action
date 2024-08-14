@@ -26264,7 +26264,8 @@ async function ExecUnity(editorPath, args) {
     let exitCode = 0;
     switch (process.platform) {
         case 'linux':
-            exitCode = await exec.exec(`"${editorPath}"`, [...args, `-logFile`, `"${logPath}"`], {
+            core.info(`[command]${editorPath} ${args.join(' ')} -logFile ${logPath}`);
+            exitCode = await exec.exec(editorPath, [...args, `-logFile`, logPath], {
                 listeners: {
                     stdline: (data) => {
                         const line = data.toString().trim();

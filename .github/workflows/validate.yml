@@ -65,11 +65,11 @@ jobs:
           args: '-quit -nographics -batchmode -createProject "${{ github.workspace }}/TestProject" -cloneFromTemplate "${{ env.TEMPLATE_PATH }}"'
       - run: 'openupm add com.utilities.buildpipeline'
         name: Add Build Pipeline Package
-        working-directory: ${{ github.workspace }}/TestProject
+        working-directory: ${{ github.workspace }}/Test Project
       - uses:  ./ # RageAgainstThePixel/unity-action
         name: '${{ matrix.build-target }}-Build'
         with:
-          project-path: ${{ github.workspace }}/TestProject
+          project-path: ${{ github.workspace }}/Test Project
           log-name: '${{ matrix.build-target }}-Build'
           build-target: '${{ matrix.build-target }}'
           args: '-quit -nographics -batchmode -executeMethod Utilities.Editor.BuildPipeline.UnityPlayerBuildTools.StartCommandLineBuild -sceneList Assets/Scenes/SampleScene.unity'

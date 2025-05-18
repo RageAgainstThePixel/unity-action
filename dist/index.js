@@ -26265,11 +26265,11 @@ let isCancelled = false;
 async function ExecUnity(editorPath, args) {
     const logPath = getLogFilePath(args);
     process.on('SIGINT', async () => {
-        await TryKillPid(pidFile);
+        await tryKillPid(pidFile);
         isCancelled = true;
     });
     process.on('SIGTERM', async () => {
-        await TryKillPid(pidFile);
+        await tryKillPid(pidFile);
         isCancelled = true;
     });
     let exitCode = 0;
@@ -26292,7 +26292,7 @@ async function ExecUnity(editorPath, args) {
             break;
     }
     if (!isCancelled) {
-        await TryKillPid(pidFile);
+        await tryKillPid(pidFile);
         if (exitCode !== 0) {
             throw Error(`Unity failed with exit code ${exitCode}`);
         }
@@ -26305,7 +26305,7 @@ function getLogFilePath(args) {
     }
     return args[logFileIndex + 1];
 }
-async function TryKillPid(pidFile) {
+async function tryKillPid(pidFile) {
     try {
         const fileHandle = await fs.promises.open(pidFile, 'r');
         try {

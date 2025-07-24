@@ -63,9 +63,30 @@ async function exec(command: UnityCommand, onPid: (pid: ProcInfo) => void): Prom
     if (process.platform === 'linux') {
         const io = require('@actions/io');
         const xvfbRun = await io.which('xvfb-run', true);
-        unityProcess = spawn(xvfbRun, [command.editorPath, ...command.args], { stdio: ['ignore', 'ignore', 'ignore'], detached: true });
+        unityProcess = spawn(
+            xvfbRun,
+            [command.editorPath, ...command.args],
+            {
+                stdio: ['ignore', 'ignore', 'ignore'],
+                detached: true,
+                env: {
+                    ...process.env,
+                    DISPLAY: ':99',
+                    UNITY_THISISABUILDMACHINE: '1'
+                }
+            });
     } else {
-        unityProcess = spawn(command.editorPath, command.args, { stdio: ['ignore', 'ignore', 'ignore'], detached: true });
+        unityProcess = spawn(
+            command.editorPath,
+            command.args,
+            {
+                stdio: ['ignore', 'ignore', 'ignore'],
+                detached: true,
+                env: {
+                    ...process.env,
+                    UNITY_THISISABUILDMACHINE: '1'
+                }
+            });
     }
     const processId = unityProcess.pid;
     if (!processId) {

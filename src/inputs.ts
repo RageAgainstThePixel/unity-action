@@ -1,12 +1,14 @@
 import core = require("@actions/core");
 import path = require("path");
 import fs = require('fs');
+import { shellSplit } from './utils';
+import { UnityCommand } from "./types";
 
 const WORKSPACE = process.env.GITHUB_WORKSPACE;
 const UNITY_EDITOR_PATH = process.env.UNITY_EDITOR_PATH;
 const UNITY_PROJECT_PATH = process.env.UNITY_PROJECT_PATH;
 
-export async function ValidateInputs(): Promise<[string, string[]]> {
+export async function ValidateInputs(): Promise<UnityCommand> {
     let editorPath = core.getInput(`editor-path`) || UNITY_EDITOR_PATH;
     if (!editorPath) {
         throw Error(`Missing editor-path or UNITY_EDITOR_PATH`);
@@ -15,11 +17,9 @@ export async function ValidateInputs(): Promise<[string, string[]]> {
     core.debug(`Unity Editor Path:\n  > "${editorPath}"`);
     const args = [];
     const inputArgsString = core.getInput(`args`);
-    const inputArgs = inputArgsString !== undefined
-        ? inputArgsString.split(` `)
-        : [];
+    const inputArgs = shellSplit(inputArgsString);
     if (inputArgs.includes(`-version`)) {
-        return [editorPath, [`-version`]];
+        return { editorPath, args: [`-version`] };
     }
     if (!inputArgs.includes(`-batchmode`)) {
         args.push(`-batchmode`);
@@ -52,7 +52,7 @@ export async function ValidateInputs(): Promise<[string, string[]]> {
         }
         await fs.promises.access(projectPath, fs.constants.R_OK);
         core.debug(`Unity Project Path:\n  > "${projectPath}"`);
-        args.push(`-projectPath`, `"${projectPath}"`);
+        args.push(`-projectPath`, projectPath);
     }
     if (!inputArgs.includes(`-logFile`)) {
         const logsDirectory = projectPath !== undefined
@@ -77,8 +77,6 @@ export async function ValidateInputs(): Promise<[string, string[]]> {
         args.push(...inputArgs);
     }
     core.debug(`Args:`);
-    for (const arg of args) {
-        core.debug(`  > ${arg}`);
-    }
-    return [editorPath, args];
+    args.forEach(arg => core.debug(`  ${arg}`));
+    return { editorPath, args };
 }

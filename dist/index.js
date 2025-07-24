@@ -25653,6 +25653,7 @@ exports.ValidateInputs = ValidateInputs;
 const core = __nccwpck_require__(2186);
 const path = __nccwpck_require__(1017);
 const fs = __nccwpck_require__(7147);
+const utils_1 = __nccwpck_require__(1314);
 const WORKSPACE = process.env.GITHUB_WORKSPACE;
 const UNITY_EDITOR_PATH = process.env.UNITY_EDITOR_PATH;
 const UNITY_PROJECT_PATH = process.env.UNITY_PROJECT_PATH;
@@ -25665,11 +25666,9 @@ async function ValidateInputs() {
     core.debug(`Unity Editor Path:\n  > "${editorPath}"`);
     const args = [];
     const inputArgsString = core.getInput(`args`);
-    const inputArgs = inputArgsString !== undefined
-        ? inputArgsString.split(` `)
-        : [];
+    const inputArgs = (0, utils_1.shellSplit)(inputArgsString);
     if (inputArgs.includes(`-version`)) {
-        return [editorPath, [`-version`]];
+        return { editorPath, args: [`-version`] };
     }
     if (!inputArgs.includes(`-batchmode`)) {
         args.push(`-batchmode`);
@@ -25701,7 +25700,7 @@ async function ValidateInputs() {
         }
         await fs.promises.access(projectPath, fs.constants.R_OK);
         core.debug(`Unity Project Path:\n  > "${projectPath}"`);
-        args.push(`-projectPath`, `"${projectPath}"`);
+        args.push(`-projectPath`, projectPath);
     }
     if (!inputArgs.includes(`-logFile`)) {
         const logsDirectory = projectPath !== undefined
@@ -25727,10 +25726,8 @@ async function ValidateInputs() {
         args.push(...inputArgs);
     }
     core.debug(`Args:`);
-    for (const arg of args) {
-        core.debug(`  > ${arg}`);
-    }
-    return [editorPath, args];
+    args.forEach(arg => core.debug(`  ${arg}`));
+    return { editorPath, args };
 }
 
 
@@ -25743,76 +25740,382 @@ async function ValidateInputs() {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ExecUnity = ExecUnity;
-const exec = __nccwpck_require__(1514);
 const core = __nccwpck_require__(2186);
-const io = __nccwpck_require__(7436);
 const path = __nccwpck_require__(1017);
 const fs = __nccwpck_require__(7147);
-const pidFile = path.join(process.env.RUNNER_TEMP, 'unity-process-id.txt');
-let isCancelled = false;
-async function ExecUnity(editorPath, args) {
-    const logPath = getLogFilePath(args);
+const child_process_1 = __nccwpck_require__(2081);
+const utils_1 = __nccwpck_require__(1314);
+const pidFile = path.join(process.env.RUNNER_TEMP || process.env.USERPROFILE, '.unity', 'unity-editor-process-id.txt');
+async function ExecUnity(command) {
+    let isCancelled = false;
     process.once('SIGINT', async () => {
-        await tryKillPid(pidFile);
+        await (0, utils_1.tryKillPid)(pidFile);
         isCancelled = true;
     });
     process.once('SIGTERM', async () => {
-        await tryKillPid(pidFile);
+        await (0, utils_1.tryKillPid)(pidFile);
         isCancelled = true;
     });
-    let exitCode = 0;
-    switch (process.platform) {
-        default:
-            const unity = __nccwpck_require__.ab + "unity.ps1";
-            const pwsh = await io.which('pwsh', true);
-            exitCode = await exec.exec(`"${pwsh}" -Command`, [`${unity} -EditorPath '${editorPath}' -Arguments '${args.join(` `)}' -LogPath '${logPath}'`], {
-                listeners: {
-                    stdline: (data) => {
-                        const line = data.toString().trim();
-                        if (line && line.length > 0) {
-                            core.info(line);
-                        }
-                    }
-                },
-                silent: true,
-                ignoreReturnCode: true
-            });
-            break;
+    let exitCode;
+    let unityProcInfo = null;
+    try {
+        core.info(`[command]"${command.editorPath}" ${command.args.join(' ')}`);
+        exitCode = await exec(command, pInfo => { unityProcInfo = pInfo; });
     }
-    if (!isCancelled) {
-        await tryKillPid(pidFile);
-        if (exitCode !== 0) {
-            throw Error(`Unity failed with exit code ${exitCode}`);
+    catch (error) {
+        core.error(`Unity execution failed:\n${error}`);
+        if (!exitCode) {
+            exitCode = 1;
+        }
+    }
+    finally {
+        if (!isCancelled) {
+            const killedPid = await (0, utils_1.tryKillPid)(pidFile);
+            if (unityProcInfo) {
+                if (killedPid && killedPid !== unityProcInfo.pid) {
+                    core.warning(`Killed process with pid ${killedPid} but expected pid ${unityProcInfo.pid}`);
+                }
+                await (0, utils_1.cleanupProcessOrphans)(unityProcInfo);
+            }
+            if (exitCode !== 0) {
+                throw Error(`Unity failed with exit code ${exitCode}`);
+            }
         }
     }
 }
-function getLogFilePath(args) {
-    const logFileIndex = args.indexOf('-logFile');
-    if (logFileIndex === -1) {
-        throw Error('Missing -logFile argument');
+async function exec(command, onPid) {
+    const logPath = (0, utils_1.getArgumentValue)('-logFile', command.args);
+    if (!logPath) {
+        throw Error('Log file path not specified in command arguments');
     }
-    return args[logFileIndex + 1];
-}
-async function tryKillPid(pidFile) {
-    try {
-        const fileHandle = await fs.promises.open(pidFile, 'r');
+    const unityProcess = (0, child_process_1.spawn)(command.editorPath, command.args, { stdio: ['ignore', 'ignore', 'ignore'], detached: true });
+    const processId = unityProcess.pid;
+    if (!processId) {
+        throw new Error('Failed to start Unity process!');
+    }
+    onPid({ pid: processId, ppid: process.pid, name: command.editorPath });
+    core.debug(`Unity process started with pid: ${processId}`);
+    const pidDir = path.dirname(pidFile);
+    if (!fs.existsSync(pidDir)) {
+        fs.mkdirSync(pidDir, { recursive: true });
+    }
+    else {
         try {
-            const pid = await fileHandle.readFile('utf8');
-            core.debug(`Attempting to kill Unity process with pid: ${pid}`);
-            process.kill(parseInt(pid));
+            await fs.promises.access(pidFile, fs.constants.R_OK | fs.constants.W_OK);
+            const killedPid = await (0, utils_1.tryKillPid)(pidFile);
+            if (killedPid) {
+                core.warning(`Killed existing Unity process with pid: ${killedPid}`);
+            }
+        }
+        catch (_a) {
+        }
+    }
+    fs.writeFileSync(pidFile, String(processId));
+    const logPollingInterval = 100;
+    while (!fs.existsSync(logPath)) {
+        await new Promise(res => setTimeout(res, logPollingInterval));
+    }
+    let lastSize = 0;
+    let logEnded = false;
+    const tailLog = async () => {
+        while (!logEnded) {
+            try {
+                const stats = fs.statSync(logPath);
+                if (stats.size > lastSize) {
+                    const fd = fs.openSync(logPath, 'r');
+                    const buffer = Buffer.alloc(stats.size - lastSize);
+                    fs.readSync(fd, buffer, 0, buffer.length, lastSize);
+                    process.stdout.write(buffer.toString('utf8'));
+                    fs.closeSync(fd);
+                    lastSize = stats.size;
+                }
+            }
+            catch (error) {
+            }
+            await new Promise(res => setTimeout(res, logPollingInterval));
+        }
+    };
+    const timeout = 10000;
+    const tailPromise = tailLog();
+    const exitCode = await new Promise((resolve, reject) => {
+        unityProcess.on('exit', (code) => {
+            setTimeout(() => {
+                logEnded = true;
+                resolve(code !== null && code !== void 0 ? code : 1);
+            }, timeout);
+        });
+        unityProcess.on('error', (error) => {
+            setTimeout(() => {
+                logEnded = true;
+                reject(error);
+            }, timeout);
+        });
+    });
+    await tailPromise;
+    const start = Date.now();
+    let fileLocked = true;
+    while (fileLocked && Date.now() - start < timeout) {
+        try {
+            if (fs.existsSync(logPath)) {
+                const fd = fs.openSync(logPath, 'r+');
+                fs.closeSync(fd);
+                fileLocked = false;
+            }
+            else {
+                fileLocked = false;
+            }
+        }
+        catch (_b) {
+            fileLocked = true;
+            await new Promise(res => setTimeout(res, logPollingInterval));
+        }
+    }
+    return exitCode;
+}
+
+
+/***/ }),
+
+/***/ 1314:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.shellSplit = shellSplit;
+exports.getArgumentValue = getArgumentValue;
+exports.listProcesses = listProcesses;
+exports.cleanupProcessOrphans = cleanupProcessOrphans;
+exports.tryKillPid = tryKillPid;
+const core = __nccwpck_require__(2186);
+const child_process_1 = __nccwpck_require__(2081);
+const util = __nccwpck_require__(3837);
+const fs = __nccwpck_require__(7147);
+const execAsync = util.promisify(child_process_1.exec);
+const systemProcessNames = [
+    'System',
+    'Idle',
+    'Spotlight',
+    'svchost.exe',
+    'explorer.exe',
+    'services.exe',
+    'wininit.exe',
+    'winlogon.exe',
+    'lsass.exe',
+    'csrss.exe',
+    'smss.exe',
+    'init',
+    'kthreadd',
+    'kworker',
+    'systemd',
+    'launchd',
+    'kernel_task',
+    'Finder',
+    'Dock',
+    'WindowServer',
+    'logd',
+    'securityd',
+    'notifyd',
+    'unattended-upgrades',
+    'cron',
+    'atd',
+    'dbus-daemon'
+];
+function shellSplit(input) {
+    if (!input)
+        return [];
+    const result = [];
+    let current = '';
+    let inSingle = false;
+    let inDouble = false;
+    let escape = false;
+    for (let i = 0; i < input.length; i++) {
+        const c = input[i];
+        if (inSingle) {
+            if (escape) {
+                current += c;
+                escape = false;
+            }
+            else if (c === '\\') {
+                const next = input[i + 1];
+                if (next === "'" || next === '\\') {
+                    escape = true;
+                    continue;
+                }
+                else {
+                    current += c;
+                }
+            }
+            else if (c === "'") {
+                inSingle = false;
+            }
+            else {
+                current += c;
+            }
+        }
+        else if (inDouble) {
+            if (escape) {
+                current += c;
+                escape = false;
+            }
+            else if (c === '\\') {
+                const next = input[i + 1];
+                if (next === '"' || next === '\\') {
+                    escape = true;
+                    continue;
+                }
+                else {
+                    current += c;
+                }
+            }
+            else if (c === '"') {
+                inDouble = false;
+            }
+            else {
+                current += c;
+            }
+        }
+        else {
+            if (c === "'") {
+                inSingle = true;
+            }
+            else if (c === '"') {
+                inDouble = true;
+            }
+            else if (/\s/.test(c)) {
+                if (current.length > 0) {
+                    result.push(current);
+                    current = '';
+                }
+            }
+            else {
+                current += c;
+            }
+        }
+    }
+    if (current.length > 0)
+        result.push(current);
+    return result;
+}
+function getArgumentValue(value, args) {
+    const index = args.indexOf(value);
+    if (index === -1 || index === args.length - 1) {
+        throw Error(`Missing ${value} argument`);
+    }
+    return args[index + 1];
+}
+async function listProcesses() {
+    try {
+        const filterSystem = (name) => {
+            return !systemProcessNames.some(sysName => name && name.toLowerCase().includes(sysName.toLowerCase()));
+        };
+        if (process.platform === 'win32') {
+            const winProcessCli = 'powershell -Command "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Csv -NoTypeInformation"';
+            core.debug(`${winProcessCli}:`);
+            const { stdout } = await execAsync(winProcessCli);
+            const lines = stdout.split(/\r?\n/).filter(l => l.trim());
+            const procs = [];
+            for (const line of lines.slice(1)) {
+                const parts = line.split(',');
+                core.debug(line);
+                if (parts.length >= 3 && !isNaN(Number(parts[0])) && !isNaN(Number(parts[1]))) {
+                    const procName = parts[2];
+                    if (filterSystem(procName)) {
+                        procs.push({
+                            name: procName,
+                            pid: Number(parts[0]),
+                            ppid: Number(parts[1])
+                        });
+                    }
+                }
+            }
+            return procs;
+        }
+        else {
+            const unixProcessCli = 'ps -eo pid,ppid,comm';
+            core.debug(`${unixProcessCli}:`);
+            const { stdout } = await execAsync(unixProcessCli);
+            const lines = stdout.split(/\r?\n/).slice(1).filter(l => l.trim());
+            const procs = [];
+            for (const line of lines) {
+                core.debug(line);
+                const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.*)$/);
+                if (match) {
+                    const procName = match[3];
+                    if (filterSystem(procName)) {
+                        procs.push({
+                            pid: Number(match[1]),
+                            ppid: Number(match[2]),
+                            name: procName
+                        });
+                    }
+                }
+            }
+            return procs;
+        }
+    }
+    catch (error) {
+        core.error(`Failed to list processes:\n${error}`);
+        return [];
+    }
+}
+async function cleanupProcessOrphans(parentProcess) {
+    const procs = await listProcesses();
+    if (procs.length === 0) {
+        core.debug('No processes found to clean up.');
+        return;
+    }
+    core.startGroup('Cleaning up orphaned processes:');
+    try {
+        for (const proc of procs) {
+            if (proc.ppid === parentProcess.pid) {
+                try {
+                    process.kill(proc.pid);
+                    core.info(`  {name: ${proc.name}, pid: ${proc.pid}}`);
+                }
+                catch (error) {
+                    if ((error === null || error === void 0 ? void 0 : error.code) === 'ESRCH') {
+                        core.debug(`  {name: ${proc.name}, pid: ${proc.pid}} already exited.`);
+                    }
+                    else {
+                        core.error(`Failed to kill orphaned process {name: ${proc.name}, pid: ${proc.pid}}:\n\t${error}`);
+                    }
+                }
+            }
+        }
+    }
+    finally {
+        core.endGroup();
+    }
+}
+async function tryKillPid(pidFilePath) {
+    let pid = null;
+    try {
+        if (!fs.existsSync(pidFilePath)) {
+            core.debug(`PID file does not exist: ${pidFilePath}`);
+            return null;
+        }
+        const fileHandle = await fs.promises.open(pidFilePath, 'r');
+        try {
+            pid = parseInt(await fileHandle.readFile('utf8'));
+            core.debug(`Killing process pid: ${pid}`);
+            process.kill(pid);
         }
         catch (error) {
-            if (error.code !== 'ENOENT' && error.code !== 'ESRCH') {
-                core.error(`Failed to kill Unity process:\n${JSON.stringify(error)}`);
+            const nodeJsException = error;
+            const errorCode = nodeJsException === null || nodeJsException === void 0 ? void 0 : nodeJsException.code;
+            if (errorCode !== 'ENOENT' && errorCode !== 'ESRCH') {
+                core.error(`Failed to kill process:\n${JSON.stringify(error)}`);
             }
         }
         finally {
             await fileHandle.close();
-            await fs.promises.unlink(pidFile);
+            await fs.promises.unlink(pidFilePath);
         }
     }
     catch (error) {
     }
+    return pid;
 }
 
 
@@ -27736,13 +28039,13 @@ var __webpack_exports__ = {};
 var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+const core = __nccwpck_require__(2186);
 const inputs_1 = __nccwpck_require__(7063);
 const unity_1 = __nccwpck_require__(6938);
-const core = __nccwpck_require__(2186);
 const main = async () => {
     try {
-        const [editor, args] = await (0, inputs_1.ValidateInputs)();
-        await (0, unity_1.ExecUnity)(editor, args);
+        const command = await (0, inputs_1.ValidateInputs)();
+        await (0, unity_1.ExecUnity)(command);
     }
     catch (error) {
         core.setFailed(error.message);

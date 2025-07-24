@@ -21,7 +21,7 @@ jobs:
           - os: macos-latest
             build-target: StandaloneOSX
     steps:
-      - uses: RageAgainstThePixel/unity-action@v1
+      - uses: RageAgainstThePixel/unity-action@v2
         name: '${{ matrix.build-target }}-Build'
         with:
           editor-path: 'path/to/your/unity/editor/installation'

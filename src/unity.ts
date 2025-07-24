@@ -115,6 +115,9 @@ async function exec(command: UnityCommand, onPid: (pid: ProcInfo) => void): Prom
             }
             await new Promise(res => setTimeout(res, logPollingInterval));
         }
+        // Write a newline at the end of the log tail
+        // prevents appending logs from being printed on the same line
+        process.stdout.write('\n');
     };
     const timeout = 10000; // 10 seconds
     // Start log tailing in background

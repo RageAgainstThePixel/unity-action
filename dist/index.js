@@ -25852,6 +25852,7 @@ async function exec(command, onPid) {
             }
             await new Promise(res => setTimeout(res, logPollingInterval));
         }
+        process.stdout.write('\n');
     };
     const timeout = 10000;
     const tailPromise = tailLog();

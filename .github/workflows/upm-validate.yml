@@ -36,6 +36,6 @@ jobs:
       matrix: ${{ fromJSON(needs.setup.outputs.jobs) }}
       fail-fast: false
     secrets: inherit
-    uses: RageAgainstThePixel/.github/workflows/build-unity-test-project.yml@main
+    uses: RageAgainstThePixel/workflows/.github/workflows/build-unity-test-project.yml@main
     with:
       matrix: ${{ toJSON(matrix.jobs.matrix) }}

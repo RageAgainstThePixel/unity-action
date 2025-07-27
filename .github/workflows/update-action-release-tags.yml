@@ -1,4 +1,4 @@
-name: Update Release Tags
+name: Update Action Release Tags
 on:
   push:
     tags: ['*']

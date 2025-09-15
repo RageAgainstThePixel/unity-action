@@ -25694,7 +25694,8 @@ async function ValidateInputs() {
         }
     }
     let projectPath = undefined;
-    const needsProjectPath = !(inputArgs.includes(`-createManualActivationFile`) ||
+    const needsProjectPath = !(inputArgs.includes(`-upmPack`) ||
+        inputArgs.includes(`-createManualActivationFile`) ||
         inputArgs.includes(`-manualLicenseFile`) ||
         inputArgs.includes(`-returnLicense`) ||
         inputArgs.includes(`-serial`) ||

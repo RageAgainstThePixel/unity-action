@@ -50,7 +50,7 @@ jobs:
           openupm add com.utilities.buildpipeline
         working-directory: ${{ env.UNITY_PROJECT_PATH }}
         shell: bash
-      - uses: ./ # RageAgainstThePixel/unity-actions
+      - uses: ./ # RageAgainstThePixel/unity-action
         name: ${{ matrix.build-target }}-Validate
         with:
           build-target: ${{ matrix.build-target }}

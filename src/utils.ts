@@ -180,11 +180,13 @@ export async function listProcesses(): Promise<ProcInfo[]> {
  * @param parentProcess The parent process information.
  */
 export async function cleanupProcessOrphans(parentProcess: ProcInfo) {
-  const procs = await listProcesses();
+  const procs = (await listProcesses()).filter(p => p.ppid === parentProcess.pid || p.ppid === parentProcess.ppid);
+
   if (procs.length === 0) {
     core.debug('No processes found to clean up.');
     return;
   }
+
   core.startGroup('Cleaning up orphaned processes:');
   try {
     for (const proc of procs) {

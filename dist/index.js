@@ -26095,7 +26095,7 @@ async function listProcesses() {
     }
 }
 async function cleanupProcessOrphans(parentProcess) {
-    const procs = await listProcesses();
+    const procs = (await listProcesses()).filter(p => p.ppid === parentProcess.pid || p.ppid === parentProcess.ppid);
     if (procs.length === 0) {
         core.debug('No processes found to clean up.');
         return;

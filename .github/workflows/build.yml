@@ -39,7 +39,7 @@ jobs:
         id: template
         shell: bash
         run: ./.github/workflows/scripts/get-unity-template.sh 'com.unity.template.3d(-cross-platform)?'
-      - uses: ./ # RageAgainstThePixel/unity-actions
+      - uses: ./ # RageAgainstThePixel/unity-action
         name: Create Test Project
         with:
           log-name: create-test-project

@@ -26100,21 +26100,19 @@ async function cleanupProcessOrphans(parentProcess) {
         core.debug('No processes found to clean up.');
         return;
     }
-    core.startGroup('Cleaning up orphaned processes:');
+    core.startGroup(`Cleaning up ${procs.length} orphaned processes:`);
     try {
         for (const proc of procs) {
-            if (proc.ppid === parentProcess.pid) {
-                try {
-                    process.kill(proc.pid);
-                    core.info(`  {name: ${proc.name}, pid: ${proc.pid}}`);
+            try {
+                process.kill(proc.pid);
+                core.info(`  {name: ${proc.name}, pid: ${proc.pid}}`);
+            }
+            catch (error) {
+                if ((error === null || error === void 0 ? void 0 : error.code) === 'ESRCH') {
+                    core.debug(`  {name: ${proc.name}, pid: ${proc.pid}} already exited.`);
                 }
-                catch (error) {
-                    if ((error === null || error === void 0 ? void 0 : error.code) === 'ESRCH') {
-                        core.debug(`  {name: ${proc.name}, pid: ${proc.pid}} already exited.`);
-                    }
-                    else {
-                        core.error(`Failed to kill orphaned process {name: ${proc.name}, pid: ${proc.pid}}:\n\t${error}`);
-                    }
+                else {
+                    core.error(`Failed to kill orphaned process {name: ${proc.name}, pid: ${proc.pid}}:\n\t${error}`);
                 }
             }
         }

@@ -1,12 +1,58 @@
+import path = require('path');
 import core = require('@actions/core');
-import { ValidateInputs } from './inputs';
-import { ExecUnity } from './unity';
-import { UnityCommand } from './types';
+import {
+    UnityEditor,
+    UnityHub,
+    UnityProject,
+} from '@rage-against-the-pixel/unity-cli';
+import { shellSplit } from './utils';
 
-const main = async () => {
+async function main() {
     try {
-        const command: UnityCommand = await ValidateInputs();
-        await ExecUnity(command);
+        const args = shellSplit(core.getInput(`args`));
+        const buildTarget = core.getInput(`build-target`);
+
+        if (buildTarget && buildTarget.length > 0) {
+            args.unshift('-buildTarget', buildTarget);
+        }
+
+        const editorPath = core.getInput(`editor-path`) || process.env.UNITY_EDITOR_PATH || undefined;
+        core.debug(`Unity Editor Path:\n  > "${editorPath}"`);
+        let unityEditor: UnityEditor | undefined;
+
+        if (editorPath && editorPath.length > 0) {
+            unityEditor = new UnityEditor(editorPath);
+        }
+
+        const projectPath = core.getInput(`project-path`) || process.env.UNITY_PROJECT_PATH || process.cwd();
+        core.debug(`Unity Project Path:\n  > "${projectPath}"`);
+        const unityProject = await UnityProject.GetProject(projectPath);
+
+        if (!unityProject) {
+            throw new Error(`The specified path is not a valid Unity project: ${projectPath}`);
+        }
+
+        if (!unityEditor) {
+            const unityHub = new UnityHub();
+            unityEditor = await unityHub.GetEditor(unityProject.version);
+        }
+
+        if (!unityEditor) {
+            throw new Error('The Unity Editor path was not specified. Use editor-path to specify it or set the UNITY_EDITOR_PATH environment variable.');
+        }
+
+        if (!args.includes('-logFile')) {
+            const logName = core.getInput(`log-name`);
+
+            if (!logName || logName.trim().length === 0) {
+                const timestamp = new Date().toISOString().replace(/[-:]/g, ``).replace(/\..+/, ``);
+                const logPath = path.join(unityEditor.GetLogsDirectory(projectPath), `${logName}-${timestamp}.log`);
+                core.debug(`Log File Path:\n  > "${logPath}"`);
+                args.push('-logFile', logPath);
+            }
+        }
+
+        await unityEditor.Run({ args: [...args] });
     } catch (error) {
         core.setFailed(error.message);
     }

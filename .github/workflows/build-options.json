@@ -19,7 +19,8 @@
     },
     {
       "os": "ubuntu-latest",
-      "build-target": "WebGL"
+      "build-target": "WebGL",
+      "build-args": "-colorSpace Gamma"
     },
     {
       "os": "ubuntu-latest",

@@ -61497,15 +61497,15 @@ async function main() {
         if (editorPath && editorPath.length > 0) {
             unityEditor = new unity_cli_1.UnityEditor(editorPath);
         }
-        const projectPath = core.getInput(`project-path`) || process.env.UNITY_PROJECT_PATH || process.cwd();
-        core.debug(`Unity Project Path:\n  > "${projectPath}"`);
-        const unityProject = await unity_cli_1.UnityProject.GetProject(projectPath);
-        if (!unityProject) {
-            throw new Error(`The specified path is not a valid Unity project: ${projectPath}`);
-        }
-        if (!unityEditor) {
-            const unityHub = new unity_cli_1.UnityHub();
-            unityEditor = await unityHub.GetEditor(unityProject.version);
+        let unityProject;
+        const projectPath = core.getInput(`project-path`) || process.env.UNITY_PROJECT_PATH || undefined;
+        if (projectPath && projectPath.trim().length > 0) {
+            unityProject = await unity_cli_1.UnityProject.GetProject(projectPath);
+            core.debug(`Unity Project Path:\n  > "${projectPath}"`);
+            if (!unityEditor) {
+                const unityHub = new unity_cli_1.UnityHub();
+                unityEditor = await unityHub.GetEditor(unityProject.version);
+            }
         }
         if (!unityEditor) {
             throw new Error('The Unity Editor path was not specified. Use editor-path to specify it or set the UNITY_EDITOR_PATH environment variable.');
@@ -61514,12 +61514,15 @@ async function main() {
             const logName = core.getInput(`log-name`);
             if (logName && logName.trim().length > 0) {
                 const timestamp = new Date().toISOString().replace(/[-:]/g, ``).replace(/\..+/, ``);
-                const logPath = path.join(unityEditor.GetLogsDirectory(projectPath), `${logName}-${timestamp}.log`);
+                const logPath = path.join(unityEditor.GetLogsDirectory(unityProject === null || unityProject === void 0 ? void 0 : unityProject.projectPath), `${logName}-${timestamp}.log`);
                 core.debug(`Log File Path:\n  > "${logPath}"`);
                 args.push('-logFile', logPath);
             }
         }
-        await unityEditor.Run({ args: [...args] });
+        await unityEditor.Run({
+            projectPath: unityProject === null || unityProject === void 0 ? void 0 : unityProject.projectPath,
+            args: [...args]
+        });
     }
     catch (error) {
         core.setFailed(error.message);

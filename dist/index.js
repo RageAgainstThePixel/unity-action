@@ -4362,19 +4362,38 @@ class UnityEditor {
             if (!command.args || command.args.length === 0) {
                 throw Error('No command arguments provided for Unity execution');
             }
-            if (!command.args.includes(`-automated`)) {
-                command.args.push(`-automated`);
-            }
-            if (!command.args.includes(`-batchmode`)) {
-                command.args.push(`-batchmode`);
-            }
             if (this.autoAddNoGraphics &&
                 !command.args.includes(`-nographics`) &&
                 !command.args.includes(`-force-graphics`)) {
-                command.args.push(`-nographics`);
+                command.args.unshift(`-nographics`);
+            }
+            if (!command.args.includes(`-batchmode`)) {
+                command.args.unshift(`-batchmode`);
+            }
+            if (!command.args.includes(`-automated`)) {
+                command.args.unshift(`-automated`);
             }
             if (!command.args.includes('-logFile')) {
-                command.args.push('-logFile', this.GenerateLogFilePath(command.projectPath));
+                command.args.unshift('-logFile', this.GenerateLogFilePath(command.projectPath));
+            }
+            else {
+                const existingLogPath = (0, utilities_1.GetArgumentValueAsString)('-logFile', command.args);
+                command.args.splice(command.args.indexOf(existingLogPath) - 1, 2);
+                command.args.unshift('-logFile', existingLogPath);
+            }
+            if (command.projectPath) {
+                if (!command.args.includes('-projectPath')) {
+                    command.args.unshift('-projectPath', command.projectPath);
+                }
+                else {
+                    const existingPath = (0, utilities_1.GetArgumentValueAsString)('-projectPath', command.args);
+                    if (existingPath !== command.projectPath) {
+                        throw Error(`Conflicting project paths provided. Argument: "${existingPath}", Command: "${command.projectPath}"`);
+                    }
+                    // Ensure -projectPath is the first argument
+                    command.args.splice(command.args.indexOf(existingPath) - 1, 2);
+                    command.args.unshift('-projectPath', command.projectPath);
+                }
             }
             const logPath = (0, utilities_1.GetArgumentValueAsString)('-logFile', command.args);
             logTail = (0, utilities_1.TailLogFile)(logPath);
@@ -61497,15 +61516,15 @@ async function main() {
         if (editorPath && editorPath.length > 0) {
             unityEditor = new unity_cli_1.UnityEditor(editorPath);
         }
-        const projectPath = core.getInput(`project-path`) || process.env.UNITY_PROJECT_PATH || process.cwd();
-        core.debug(`Unity Project Path:\n  > "${projectPath}"`);
-        const unityProject = await unity_cli_1.UnityProject.GetProject(projectPath);
-        if (!unityProject) {
-            throw new Error(`The specified path is not a valid Unity project: ${projectPath}`);
-        }
-        if (!unityEditor) {
-            const unityHub = new unity_cli_1.UnityHub();
-            unityEditor = await unityHub.GetEditor(unityProject.version);
+        let unityProject;
+        const projectPath = core.getInput(`project-path`) || process.env.UNITY_PROJECT_PATH || undefined;
+        if (projectPath && projectPath.trim().length > 0) {
+            unityProject = await unity_cli_1.UnityProject.GetProject(projectPath);
+            core.debug(`Unity Project Path:\n  > "${projectPath}"`);
+            if (!unityEditor) {
+                const unityHub = new unity_cli_1.UnityHub();
+                unityEditor = await unityHub.GetEditor(unityProject.version);
+            }
         }
         if (!unityEditor) {
             throw new Error('The Unity Editor path was not specified. Use editor-path to specify it or set the UNITY_EDITOR_PATH environment variable.');
@@ -61514,12 +61533,15 @@ async function main() {
             const logName = core.getInput(`log-name`);
             if (logName && logName.trim().length > 0) {
                 const timestamp = new Date().toISOString().replace(/[-:]/g, ``).replace(/\..+/, ``);
-                const logPath = path.join(unityEditor.GetLogsDirectory(projectPath), `${logName}-${timestamp}.log`);
+                const logPath = path.join(unityEditor.GetLogsDirectory(unityProject === null || unityProject === void 0 ? void 0 : unityProject.projectPath), `${logName}-${timestamp}.log`);
                 core.debug(`Log File Path:\n  > "${logPath}"`);
                 args.push('-logFile', logPath);
             }
         }
-        await unityEditor.Run({ args: [...args] });
+        await unityEditor.Run({
+            projectPath: unityProject === null || unityProject === void 0 ? void 0 : unityProject.projectPath,
+            args: [...args]
+        });
     }
     catch (error) {
         core.setFailed(error.message);

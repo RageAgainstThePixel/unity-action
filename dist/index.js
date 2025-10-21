@@ -61504,7 +61504,7 @@ async function main() {
         }
         if (!args.includes('-logFile')) {
             const logName = core.getInput(`log-name`);
-            if (!logName || logName.trim().length === 0) {
+            if (logName && logName.trim().length > 0) {
                 const timestamp = new Date().toISOString().replace(/[-:]/g, ``).replace(/\..+/, ``);
                 const logPath = path.join(unityEditor.GetLogsDirectory(projectPath), `${logName}-${timestamp}.log`);
                 core.debug(`Log File Path:\n  > "${logPath}"`);

@@ -22,13 +22,13 @@ jobs:
             build-target: StandaloneOSX
     steps:
       - uses: RageAgainstThePixel/unity-action@v3
-        name: '${{ matrix.build-target }}-Build'
+        name: ${{ matrix.build-target }}-Build
         with:
-          editor-path: 'path/to/your/unity/editor/installation'
-          project-path: 'path/to/your/unity/project'
-          log-name: '${{ matrix.build-target }}-Build'
-          build-target: '${{ matrix.build-target }}'
-          args: '-quit -nographics -batchmode'
+          editor-path: path/to/your/unity/editor/installation
+          project-path: path/to/your/unity/project
+          log-name: ${{ matrix.build-target }}-Build
+          build-target: ${{ matrix.build-target }}
+          args: -quit -nographics -batchmode
 ```
 
 ### Inputs

@@ -1,6 +1,6 @@
 {
   "name": "unity-action",
-  "version": "3.0.3",
+  "version": "3.0.4",
   "description": "A Github Action to execute Unity Editor command line arguments.",
   "author": "RageAgainstThePixel",
   "repository": {
@@ -20,7 +20,7 @@
   "main": "dist/index.js",
   "dependencies": {
     "@actions/core": "^1.11.1",
-    "@rage-against-the-pixel/unity-cli": "^1.5.4"
+    "@rage-against-the-pixel/unity-cli": "^1.5.5"
   },
   "devDependencies": {
     "@types/node": "^22.19.1",

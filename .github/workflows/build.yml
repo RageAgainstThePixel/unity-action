@@ -29,7 +29,7 @@ jobs:
           remove_android: true
           remove_dotnet: false
           remove_tool_cache: false
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: RageAgainstThePixel/unity-setup@main
         with:
           version-file: None
@@ -64,7 +64,7 @@ jobs:
           project-path:  ${{ steps.unity-project.outputs.project-path }}
           log-name: ${{ matrix.build-target }}-Build
           args: -quit -nographics -batchmode -executeMethod Utilities.Editor.BuildPipeline.UnityPlayerBuildTools.StartCommandLineBuild -sceneList Assets/Scenes/SampleScene.unity ${{ matrix.build-args }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         name: Upload Artifacts
         if: always()
         with:

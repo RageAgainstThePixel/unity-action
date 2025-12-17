@@ -3468,6 +3468,7 @@ __exportStar(__nccwpck_require__(1723), exports);
 __exportStar(__nccwpck_require__(8468), exports);
 __exportStar(__nccwpck_require__(3331), exports);
 __exportStar(__nccwpck_require__(9746), exports);
+__exportStar(__nccwpck_require__(6753), exports);
 //# sourceMappingURL=index.js.map
 
 /***/ }),
@@ -6144,28 +6145,39 @@ const fs = __importStar(__nccwpck_require__(7147));
 const path = __importStar(__nccwpck_require__(1017));
 const logging_1 = __nccwpck_require__(4486);
 const utilities_1 = __nccwpck_require__(9746);
-const utp_1 = __nccwpck_require__(6282);
-/**
- * Editor log messages whose severity has been changed.
- * Useful for making certain error messages that are not critical less noisy.
- * Key is the exact log message, value is the remapped LogLevel.
- */
-const remappedEditorLogs = {
-    'OpenCL device, baking cannot use GPU lightmapper.': logging_1.LogLevel.INFO,
-    'Failed to find a suitable OpenCL device, baking cannot use GPU lightmapper.': logging_1.LogLevel.INFO,
-};
+const utp_1 = __nccwpck_require__(881);
 // Detects GitHub-style annotation markers to avoid emitting duplicates
-const annotationPrefixRegex = /\n::[a-z]+::/i;
+const githubAnnotationPrefixRegex = /\n::[a-z]+::/i;
+// Matches ANSI escape sequences (CSI and single-character)
+const ansiEscapeSequenceRegex = /\u001b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 const TIMELINE_HEADING = '🔨 Unity Build Timeline';
 const PLAYER_BUILD_INFO_HEADING = '📋 Player Build Info';
 function sanitizeTelemetryJson(raw) {
     if (!raw) {
-        return '';
+        return undefined;
     }
-    return raw
+    const sanitized = raw
         .replace(/\uFEFF/gu, '')
         .replace(/\u0000/gu, '')
+        .replace(ansiEscapeSequenceRegex, '')
         .trim();
+    if (sanitized === '') {
+        return undefined;
+    }
+    return sanitized;
+}
+function sanitizeStackTrace(raw) {
+    if (!raw) {
+        return undefined;
+    }
+    const sanitized = raw
+        .replace(githubAnnotationPrefixRegex, '')
+        .replace(ansiEscapeSequenceRegex, '')
+        .trim();
+    if (sanitized === '') {
+        return undefined;
+    }
+    return sanitized;
 }
 const MIN_DESCRIPTION_COLUMN_WIDTH = 16;
 const DEFAULT_TERMINAL_WIDTH = 120;
@@ -6854,11 +6866,29 @@ function buildUtpLogPath(logPath) {
 }
 async function writeUtpTelemetryLog(filePath, entries, logger) {
     try {
-        await fs.promises.writeFile(filePath, `${JSON.stringify(entries)}\n`, 'utf8');
+        await fs.promises.writeFile(filePath, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
     }
     catch (error) {
         logger.warn(`Failed to write UTP telemetry log (${filePath}): ${error}`);
     }
+}
+/**
+ * Editor log messages whose severity has been changed.
+ * Useful for making certain error messages that are not critical less noisy.
+ * Key is a substring of the log message, value is the remapped LogLevel.
+ */
+const remappedEditorLogs = {
+    'OpenCL device, baking cannot use GPU lightmapper.': logging_1.LogLevel.INFO,
+    'Failed to find a suitable OpenCL device, baking cannot use GPU lightmapper.': logging_1.LogLevel.INFO,
+    '~StackAllocator(ALLOC_TEMP_MAIN) m_LastAlloc not NULL. Did you forget to call FreeAllStackAllocations()?': logging_1.LogLevel.INFO,
+};
+function getRemappedEditorLogLevel(message) {
+    for (const [fragment, level] of Object.entries(remappedEditorLogs)) {
+        if (message.includes(fragment)) {
+            return level;
+        }
+    }
+    return undefined;
 }
 /**
  * Tails a log file using fs.watch and ReadStream for efficient reading.
@@ -6870,6 +6900,7 @@ function TailLogFile(logPath, projectPath) {
     let logEnded = false;
     let lastSize = 0;
     const logPollingInterval = 250;
+    let pendingPartialLine = '';
     const telemetry = [];
     const logger = logging_1.Logger.instance;
     const actionAccumulator = new ActionTelemetryAccumulator();
@@ -6896,6 +6927,67 @@ function TailLogFile(logPath, projectPath) {
             renderActionTable();
         }
     };
+    const processLogLine = (rawLine) => {
+        const line = rawLine.trim();
+        if (!line) {
+            return;
+        }
+        // Attempt to parse telemetry utp JSON
+        if (line.startsWith('##utp:')) {
+            const jsonPart = line.substring('##utp:'.length).trim();
+            try {
+                const sanitizedJson = sanitizeTelemetryJson(jsonPart);
+                if (!sanitizedJson) {
+                    return;
+                }
+                const utpJson = JSON.parse(sanitizedJson);
+                const utp = (0, utp_1.normalizeTelemetryEntry)(utpJson);
+                telemetry.push(utp);
+                if (utp.message && 'severity' in utp &&
+                    (utp.severity === utp_1.Severity.Error || utp.severity === utp_1.Severity.Exception || utp.severity === utp_1.Severity.Assert)) {
+                    let messageLevel = logging_1.LogLevel.ERROR;
+                    const remappedLevel = getRemappedEditorLogLevel(utp.message);
+                    if (remappedLevel !== undefined) {
+                        messageLevel = remappedLevel;
+                    }
+                    const file = utp.file ? utp.file.replace(/\\/g, '/') : undefined;
+                    const stacktrace = sanitizeStackTrace(utp.stackTrace);
+                    const message = stacktrace == undefined ? utp.message : `${utp.message}\n${stacktrace}`;
+                    if (!githubAnnotationPrefixRegex.test(message)) {
+                        // only annotate if the file is within the current project
+                        if (projectPath && file && file.startsWith(projectPath)) {
+                            logger.annotate(logging_1.LogLevel.ERROR, message, file, utp.line);
+                        }
+                        else {
+                            switch (messageLevel) {
+                                case logging_1.LogLevel.WARN:
+                                    logger.warn(message);
+                                    break;
+                                case logging_1.LogLevel.ERROR:
+                                    logger.error(message);
+                                    break;
+                                case logging_1.LogLevel.INFO:
+                                default:
+                                    logger.info(message);
+                                    break;
+                            }
+                        }
+                    }
+                }
+                else if (logging_1.Logger.instance.logLevel === logging_1.LogLevel.UTP) {
+                    printUTP(utp);
+                }
+            }
+            catch (error) {
+                logger.warn(`Failed to parse telemetry JSON: ${error} -- raw: ${jsonPart}`);
+            }
+        }
+        else {
+            if (logging_1.Logger.instance.logLevel !== logging_1.LogLevel.UTP) {
+                process.stdout.write(`${line}\n`);
+            }
+        }
+    };
     function printUTP(utp) {
         // switch utp types, fallback to json if we don't have a toString() implementation or a type implementation
         switch (utp.type) {
@@ -6919,6 +7011,7 @@ function TailLogFile(logPath, projectPath) {
                 break;
             }
             default:
+                logger.warn(`UTP entry has unknown type: ${utp.type ?? 'undefined'}`);
                 // Print raw JSON for unhandled UTP types
                 writeStdoutThenTableContent(`${JSON.stringify(utp)}\n`);
                 break;
@@ -6949,66 +7042,17 @@ function TailLogFile(logPath, projectPath) {
                     const chunk = buffer.toString('utf8');
                     // Parse telemetry lines in this chunk (lines starting with '##utp:')
                     try {
-                        const lines = chunk.split(/\r?\n/);
+                        const combined = pendingPartialLine + chunk;
+                        const lines = combined.split(/\r?\n/);
+                        const chunkEndsWithEol = chunk.endsWith('\n') || chunk.endsWith('\r');
+                        if (!chunkEndsWithEol) {
+                            pendingPartialLine = lines.pop() ?? '';
+                        }
+                        else {
+                            pendingPartialLine = '';
+                        }
                         for (const rawLine of lines) {
-                            const line = rawLine.trim();
-                            if (!line) {
-                                continue;
-                            }
-                            // Attempt to parse telemetry utp JSON
-                            if (line.startsWith('##utp:')) {
-                                const jsonPart = line.substring('##utp:'.length).trim();
-                                try {
-                                    const sanitizedJson = sanitizeTelemetryJson(jsonPart);
-                                    if (!sanitizedJson) {
-                                        continue;
-                                    }
-                                    const utpJson = JSON.parse(sanitizedJson);
-                                    const utp = utpJson;
-                                    telemetry.push(utp);
-                                    if (utp.message && 'severity' in utp && (utp.severity === utp_1.Severity.Error || utp.severity === utp_1.Severity.Exception || utp.severity === utp_1.Severity.Assert)) {
-                                        let messageLevel = logging_1.LogLevel.ERROR;
-                                        if (remappedEditorLogs[utp.message] !== undefined) {
-                                            messageLevel = remappedEditorLogs[utp.message];
-                                        }
-                                        const file = utp.file ? utp.file.replace(/\\/g, '/') : undefined;
-                                        const lineNum = utp.line ? utp.line : undefined;
-                                        const message = utp.message;
-                                        const stacktrace = utp.stacktrace ? `${utp.stacktrace}` : undefined;
-                                        if (!annotationPrefixRegex.test(message)) {
-                                            // only annotate if the file is within the current project
-                                            if (projectPath && file && file.startsWith(projectPath)) {
-                                                logger.annotate(logging_1.LogLevel.ERROR, stacktrace == undefined ? message : `${message}\n${stacktrace}`, file, lineNum);
-                                            }
-                                            else {
-                                                switch (messageLevel) {
-                                                    case logging_1.LogLevel.WARN:
-                                                        logger.warn(stacktrace == undefined ? message : `${message}\n${stacktrace}`);
-                                                        break;
-                                                    case logging_1.LogLevel.ERROR:
-                                                        logger.error(stacktrace == undefined ? message : `${message}\n${stacktrace}`);
-                                                        break;
-                                                    case logging_1.LogLevel.INFO:
-                                                    default:
-                                                        logger.info(stacktrace == undefined ? message : `${message}\n${stacktrace}`);
-                                                        break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    else if (logging_1.Logger.instance.logLevel === logging_1.LogLevel.UTP) {
-                                        printUTP(utp);
-                                    }
-                                }
-                                catch (error) {
-                                    logger.warn(`Failed to parse telemetry JSON: ${error} -- raw: ${jsonPart}`);
-                                }
-                            }
-                            else {
-                                if (logging_1.Logger.instance.logLevel !== logging_1.LogLevel.UTP) {
-                                    process.stdout.write(`${line}\n`);
-                                }
-                            }
+                            processLogLine(rawLine);
                         }
                     }
                     catch (error) {
@@ -7034,6 +7078,10 @@ function TailLogFile(logPath, projectPath) {
                 // Final read to capture any remaining content after tailing stops
                 await (0, utilities_1.WaitForFileToBeUnlocked)(logPath, 10_000);
                 await readNewLogContent();
+                if (pendingPartialLine.trim().length > 0) {
+                    processLogLine(pendingPartialLine);
+                    pendingPartialLine = '';
+                }
                 try {
                     // write a final newline to separate log output
                     process.stdout.write('\n');
@@ -7988,13 +8036,15 @@ function tryParseJson(content) {
 
 /***/ }),
 
-/***/ 6282:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 881:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Severity = exports.Phase = exports.UTPPlayerBuildInfo = exports.UTPMemoryLeak = exports.UTPBase = void 0;
+exports.Severity = exports.Phase = exports.UTPPlayerBuildInfo = exports.UTPTestStatus = exports.UTPQualitySettings = exports.UTPPlayerSystemInfo = exports.UTPBuildSettings = exports.UTPPlayerSettings = exports.UTPScreenSettings = exports.UTPTestPlan = exports.UTPLogEntry = exports.UTPMemoryLeak = exports.UTPBase = void 0;
+exports.normalizeTelemetryEntry = normalizeTelemetryEntry;
+const logging_1 = __nccwpck_require__(4486);
 class UTPBase {
     type;
     version;
@@ -8003,12 +8053,15 @@ class UTPBase {
     processId;
     severity;
     message;
-    stacktrace;
+    stackTrace;
     line;
+    lineNumber;
     file;
+    fileName;
     name;
     description;
     duration;
+    durationMicroseconds;
     errors;
 }
 exports.UTPBase = UTPBase;
@@ -8017,6 +8070,38 @@ class UTPMemoryLeak extends UTPBase {
     memoryLabels;
 }
 exports.UTPMemoryLeak = UTPMemoryLeak;
+class UTPLogEntry extends UTPBase {
+}
+exports.UTPLogEntry = UTPLogEntry;
+class UTPTestPlan extends UTPBase {
+    tests;
+}
+exports.UTPTestPlan = UTPTestPlan;
+class UTPScreenSettings extends UTPBase {
+    ScreenSettings;
+}
+exports.UTPScreenSettings = UTPScreenSettings;
+class UTPPlayerSettings extends UTPBase {
+    PlayerSettings;
+}
+exports.UTPPlayerSettings = UTPPlayerSettings;
+class UTPBuildSettings extends UTPBase {
+    BuildSettings;
+}
+exports.UTPBuildSettings = UTPBuildSettings;
+class UTPPlayerSystemInfo extends UTPBase {
+    PlayerSystemInfo;
+}
+exports.UTPPlayerSystemInfo = UTPPlayerSystemInfo;
+class UTPQualitySettings extends UTPBase {
+    QualitySettings;
+}
+exports.UTPQualitySettings = UTPQualitySettings;
+class UTPTestStatus extends UTPBase {
+    state;
+    iteration;
+}
+exports.UTPTestStatus = UTPTestStatus;
 class UTPPlayerBuildInfo extends UTPBase {
     steps;
 }
@@ -8035,6 +8120,78 @@ var Severity;
     Severity["Exception"] = "Exception";
     Severity["Assert"] = "Assert";
 })(Severity || (exports.Severity = Severity = {}));
+const allowedUtpKeys = new Set([
+    'allocatedMemory',
+    'BuildSettings',
+    'description',
+    'duration',
+    'durationMicroseconds',
+    'errors',
+    'file',
+    'fileName',
+    'iteration',
+    'line',
+    'lineNumber',
+    'memoryLabels',
+    'message',
+    'name',
+    'phase',
+    'PlayerSettings',
+    'PlayerSystemInfo',
+    'processId',
+    'QualitySettings',
+    'ScreenSettings',
+    'severity',
+    'stacktrace',
+    'stackTrace',
+    'state',
+    'steps',
+    'tests',
+    'time',
+    'type',
+    'version',
+]);
+/**
+ * Normalizes UTP telemetry entries to canonical shapes and reports unexpected properties.
+ */
+function normalizeTelemetryEntry(entry) {
+    if (!entry || typeof entry !== 'object') {
+        return entry;
+    }
+    const utp = entry;
+    const record = entry;
+    const stackTraceLegacy = record.stacktrace;
+    if (utp.stackTrace === undefined && typeof stackTraceLegacy === 'string') {
+        utp.stackTrace = stackTraceLegacy;
+    }
+    const fileNameLegacy = record.fileName;
+    if (utp.file === undefined && typeof fileNameLegacy === 'string') {
+        utp.file = fileNameLegacy;
+    }
+    if (utp.fileName === undefined && typeof utp.file === 'string') {
+        utp.fileName = utp.file;
+    }
+    const lineNumberLegacy = record.lineNumber;
+    if (utp.line === undefined && typeof lineNumberLegacy === 'number') {
+        utp.line = lineNumberLegacy;
+    }
+    if (utp.lineNumber === undefined && typeof utp.line === 'number') {
+        utp.lineNumber = utp.line;
+    }
+    if (!utp.type) {
+        logging_1.Logger.instance.warn('UTP entry missing type property; telemetry entry may be ignored.');
+    }
+    const extras = [];
+    for (const key of Object.keys(record)) {
+        if (!allowedUtpKeys.has(key)) {
+            extras.push(key);
+        }
+    }
+    if (extras.length > 0) {
+        logging_1.Logger.instance.warn(`UTP entry contains unrecognized properties: ${extras.join(', ')}`);
+    }
+    return utp;
+}
 //# sourceMappingURL=utp.js.map
 
 /***/ }),

@@ -60,8 +60,8 @@ jobs:
           npx --no-install unity-cli setup-unity --unity-version "${MATRIX_UNITY_VERSION}" --build-targets "${MATRIX_BUILD_TARGET}" --json
       # macOS and Linux runners all report the same machine identity to Unity, so the license the license job activated
       # once for this run serves every macOS or Linux row; it arrives as an encrypted artifact and is never returned.
-      # Without it, the action signs in with the account. Windows runners are a new machine every job, so Windows rows
-      # sign in and return the license.
+      # Without it, or when it no longer fits this machine, the row activates with the account. Windows runners are a
+      # new machine every job, so Windows rows activate with the account and return the license.
       - name: Download run license
         id: download-run-license
         if: ${{ runner.os != 'Windows' }}
@@ -70,37 +70,36 @@ jobs:
         with:
           name: unity-license-${{ runner.os }}
           path: ${{ runner.temp }}/unity-license
-      - name: Install run license
+      - name: Decrypt run license
+        id: run-license
         if: ${{ steps.download-run-license.outcome == 'success' }}
         continue-on-error: true
-        shell: pwsh
+        shell: bash
         env:
           CI_TOKEN: ${{ secrets.CI_TOKEN }}
         run: |
-          $license = npx --no-install unity-cli license-file-path
-          if ($LASTEXITCODE -ne 0) { throw 'Could not find the license file path' }
-          $dir = Join-Path $env:RUNNER_TEMP 'unity-license'
-          $decrypted = Join-Path $dir 'Unity_lic.ulf'
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/unity-license"
+          license="${dir}/Unity_lic.ulf"
           # the key never reaches a command line: openssl reads it from the environment
-          $env:LICENSE_KEY = "$($env:CI_TOKEN):$($env:GITHUB_RUN_ID)"
-          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in (Join-Path $dir 'unity-license.enc') -out $decrypted -pass env:LICENSE_KEY
-          if ($LASTEXITCODE -ne 0) { throw 'Could not decrypt the run license' }
-          try {
-            New-Item -ItemType Directory -Force -Path (Split-Path $license) -ErrorAction Stop | Out-Null
-            Copy-Item $decrypted $license -Force -ErrorAction Stop
-          } catch {
-            # the macOS license lives under /Library, which only root can write
-            sudo mkdir -p (Split-Path $license)
-            sudo cp $decrypted $license
-            if ($LASTEXITCODE -ne 0) { throw 'Could not install the run license' }
-          } finally {
-            Remove-Item -Recurse -Force $dir
-          }
+          export LICENSE_KEY="${CI_TOKEN}:${GITHUB_RUN_ID}"
+          if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "${dir}/unity-license.enc" -out "${license}" -pass env:LICENSE_KEY; then
+            echo 'Could not decrypt the run license' >&2
+            exit 1
+          fi
+          echo "path=${license}" >> "${GITHUB_OUTPUT}"
+      # activates from UNITY_LICENSE before signing in; the post step skips the return on GitHub-hosted macOS and Linux
       - uses: RageAgainstThePixel/activate-unity-license@v3
+        env:
+          UNITY_LICENSE: ${{ steps.run-license.outputs.path }}
         with:
           license: Personal
           username: ${{ secrets.UNITY_USERNAME }}
           password: ${{ secrets.UNITY_PASSWORD }}
+      - name: Remove run license
+        if: ${{ always() && steps.download-run-license.outcome == 'success' }}
+        shell: bash
+        run: rm -rf "${RUNNER_TEMP}/unity-license"
       - uses: RageAgainstThePixel/create-unity-project@v3
         id: unity-project
         with:

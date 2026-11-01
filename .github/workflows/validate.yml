@@ -61,7 +61,7 @@ jobs:
             exit 0
           }
           "available=true" >> $env:GITHUB_OUTPUT
-      - uses: RageAgainstThePixel/activate-unity-license@8a9a82a961bd7044da0e8c868c83d704991b2df7 # v3.0.0, until v3 is tagged
+      - uses: RageAgainstThePixel/activate-unity-license@v3
         if: ${{ steps.secrets.outputs.available == 'true' }}
         with:
           license: Personal

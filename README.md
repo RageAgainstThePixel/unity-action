@@ -34,7 +34,7 @@ jobs:
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `editor-path` | The path to the unity editor installation you want to use to execute the arguments with. When neither this nor `UNITY_EDITOR_PATH` is set, the editor is looked up from the project's Unity version. | If `UNITY_EDITOR_PATH` and `project-path` are not set. | `env.UNITY_EDITOR_PATH` |
+| `editor-path` | The path to the unity editor installation you want to use to execute the arguments with. When neither this nor `UNITY_EDITOR_PATH` is set, the editor is looked up from the project's Unity version. | If `UNITY_EDITOR_PATH`, `project-path` and `UNITY_PROJECT_PATH` are not set. | `env.UNITY_EDITOR_PATH` |
 | `project-path` | The path to the unity project you want to use when executing arguments. | If `UNITY_PROJECT_PATH` environment variable is not set, or if it isn't required for the command. | `env.UNITY_PROJECT_PATH` |
 | `build-target` | The build target to use when executing arguments. Passed as `-buildTarget`. | false | |
 | `args` | The [arguments](https://docs.unity3d.com/Manual/EditorCommandLineArguments.html) to use when executing commands to the editor. `-batchmode` and `-nographics` are added when missing; use `-force-graphics` to skip `-nographics`. | false | `-quit -batchmode -nographics` |

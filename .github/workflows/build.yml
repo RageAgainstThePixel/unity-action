@@ -84,12 +84,12 @@ jobs:
           } finally {
             Remove-Item -Recurse -Force $dir
           }
-      - uses: RageAgainstThePixel/activate-unity-license@v3
+      - uses: RageAgainstThePixel/activate-unity-license@8a9a82a961bd7044da0e8c868c83d704991b2df7 # v3.0.0, until v3 is tagged
         with:
           license: Personal
           username: ${{ secrets.UNITY_USERNAME }}
           password: ${{ secrets.UNITY_PASSWORD }}
-      - uses: RageAgainstThePixel/create-unity-project@v3
+      - uses: RageAgainstThePixel/create-unity-project@dev/v3.0.0 # until v3 is tagged
         id: unity-project
         with:
           project-name: Test Project

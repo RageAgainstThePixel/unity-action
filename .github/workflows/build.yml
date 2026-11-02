@@ -108,7 +108,7 @@ jobs:
         if: ${{ always() && steps.download-run-license.outcome == 'success' }}
         shell: bash
         run: rm -rf "${RUNNER_TEMP}/unity-license"
-      - uses: RageAgainstThePixel/create-unity-project@v3
+      - uses: RageAgainstThePixel/create-unity-project@dev/v4.0.0
         id: unity-project
         with:
           project-name: Test Project

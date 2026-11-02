@@ -6705,6 +6705,34 @@ class UnityCli {
         }
         return envelope.data;
     }
+    /**
+     * The arguments that list the project templates for an editor: `templates --editor-version <version>`, or
+     * `templates list --editor <version>` for CLI 1.0.0-beta.14 and older, which have no `--editor-version` on `templates`.
+     * @param editorVersion The editor version to list templates for. Omitted, the CLI uses its stored default.
+     */
+    TemplatesListArgs(editorVersion = undefined) {
+        const legacy = (0, semver_1.valid)(this.version) !== null && (0, semver_1.compare)(this.version, '1.0.0-beta.15') < 0;
+        if (legacy) {
+            return ['templates', 'list', ...(editorVersion ? ['--editor', editorVersion] : [])];
+        }
+        return ['templates', ...(editorVersion ? ['--editor-version', editorVersion] : [])];
+    }
+    /**
+     * Lists the ids of the project templates the CLI offers for an editor, with the syntax this CLI version takes.
+     * @param editorVersion The editor version to list templates for. Omitted, the CLI uses its stored default.
+     * @returns The template ids, such as `com.unity.template.3d`, in the order they were listed.
+     * @throws If the templates could not be listed.
+     */
+    async ListTemplates(editorVersion = undefined) {
+        const data = await this.ExecJson(this.TemplatesListArgs(editorVersion));
+        // CLI 1.0.0-beta.15 and newer wrap the list in items
+        const templates = Array.isArray(data) ? data : data?.items;
+        return (templates ?? [])
+            // entries without a type, such as 7000.0's 3d and 2d at version 0.0.0, are the Hub's blank projects, not template packages
+            .filter(t => !!t.type)
+            .map(t => t.name || t.id)
+            .filter((id) => !!id);
+    }
     /** Gets the directory the CLI installs editors to. */
     async GetInstallPath() {
         const data = await this.ExecJson(['install-path', '--get']);
